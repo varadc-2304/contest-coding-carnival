@@ -1,12 +1,21 @@
+// Language ID mapping for Judge0 API
+const languageIds: Record<string, number> = {
+  cpp: 54,       // C++ (GCC 9.2.0)
+  java: 62,      // Java (OpenJDK 13.0.1)
+  python: 71,    // Python (3.8.1)
+  javascript: 63 // JavaScript (Node.js 12.14.0)
+};
+
 export const executeCode = async (params: CodeExecutionParams): Promise<CodeExecutionResult> => {
   try {
     const { language, code, input, expectedOutput } = params;
-    
+
+    // Ensure language exists in languageIds
     const languageId = languageIds[language];
     if (!languageId) {
       throw new Error(`Unsupported language: ${language}`);
     }
-    
+
     console.log('Submitting code to Judge0 API...');
     
     const response = await fetch('http://82.25.104.175:2358/submissions?base64_encoded=false&wait=false', {
