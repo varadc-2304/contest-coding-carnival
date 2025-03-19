@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -13,8 +14,8 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 357 100% 59%; /* Red color */
+    --primary-foreground: 0 0% 100%;
 
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
@@ -30,24 +31,17 @@
 
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --ring: 357 100% 59%;
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
 
     --sidebar-background: 0 0% 98%;
-
     --sidebar-foreground: 240 5.3% 26.1%;
-
     --sidebar-primary: 240 5.9% 10%;
-
     --sidebar-primary-foreground: 0 0% 98%;
-
     --sidebar-accent: 240 4.8% 95.9%;
-
     --sidebar-accent-foreground: 240 5.9% 10%;
-
     --sidebar-border: 220 13% 91%;
-
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
 
@@ -61,8 +55,8 @@
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary: 357 100% 59%;
+    --primary-foreground: 0 0% 100%;
 
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
@@ -97,5 +91,52 @@
 
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* SF Pro Display and SF Pro Text - System fonts */
+@font-face {
+  font-family: "SF Pro Display";
+  src: local("SF Pro Display"), local(-apple-system), local(BlinkMacSystemFont);
+  font-weight: 300 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "SF Pro Text";
+  src: local("SF Pro Text"), local(-apple-system), local(BlinkMacSystemFont);
+  font-weight: 300 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@layer components {
+  .contest-button {
+    @apply bg-contest-red text-white rounded-lg px-6 py-3 font-medium transition-all duration-300
+           hover:bg-opacity-90 hover:shadow-md active:bg-opacity-100 active:scale-[0.98] active:shadow-sm
+           focus:outline-none focus:ring-2 focus:ring-contest-red focus:ring-opacity-50;
+  }
+  
+  .contest-input {
+    @apply bg-white border border-contest-mediumGray rounded-lg px-4 py-3 w-full
+           transition-all duration-200 focus:border-contest-red focus:ring-1 focus:ring-contest-red
+           focus:outline-none;
+  }
+  
+  .contest-card {
+    @apply bg-white rounded-2xl shadow-sm border border-contest-lightGray p-6
+           transition-all duration-300 hover:shadow-md;
+  }
+  
+  .glass-panel {
+    @apply bg-white bg-opacity-80 backdrop-blur-lg border border-white border-opacity-20
+           rounded-2xl shadow-sm;
+  }
+  
+  .code-editor-container {
+    @apply font-mono text-sm bg-white rounded-lg border border-contest-mediumGray shadow-inner
+           transition-all duration-300;
   }
 }
