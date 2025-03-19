@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from "@/hooks/use-toast";
 import CodeEditor from '@/components/CodeEditor';
 import { fetchContestQuestions, saveSubmission } from '@/services/contestService';
+import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
 
 type Question = {
   id: string;
@@ -76,7 +78,7 @@ const CodingInterface = () => {
               description: "The contest has ended",
               variant: "destructive",
             });
-            navigate('/');
+            handleEndContest();
           }
         };
         
@@ -105,6 +107,45 @@ const CodingInterface = () => {
     const secs = seconds % 60;
     
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleEndContest = async () => {
+    try {
+      const userId = sessionStorage.getItem('userId');
+      const participationId = sessionStorage.getItem('participationId');
+      const contestDetails = JSON.parse(sessionStorage.getItem('contestDetails') || '{}');
+      
+      if (userId && participationId) {
+        // Update participation record to mark it as ended
+        await supabase
+          .from('participations')
+          .update({
+            end_time: new Date().toISOString(),
+            is_active: false
+          })
+          .eq('id', participationId);
+          
+        toast({
+          title: "Contest Ended",
+          description: "Your contest participation has been recorded. Thank you for participating!",
+        });
+      }
+      
+      // Clear session data
+      sessionStorage.removeItem('contestEndTime');
+      sessionStorage.removeItem('contestStartTime');
+      sessionStorage.removeItem('participationId');
+      
+      // Navigate to home page
+      navigate('/');
+    } catch (error: any) {
+      console.error('Error ending contest:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to end the contest",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleSaveSubmission = async (questionId: string, code: string, language: string, status: string, executionTime?: number, memoryUsed?: number) => {
@@ -187,6 +228,14 @@ const CodingInterface = () => {
           <div className="text-contest-red font-mono font-bold text-xl">
             {formatTime(timeLeft)}
           </div>
+          
+          <Button 
+            onClick={handleEndContest}
+            variant="destructive" 
+            size="sm"
+          >
+            End Contest
+          </Button>
         </div>
       </header>
       

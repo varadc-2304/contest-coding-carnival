@@ -11,6 +11,8 @@ type CodeExecutionResult = {
   error?: string;
   status: 'Accepted' | 'Wrong Answer' | 'Error' | 'Time Limit Exceeded';
   executionTime?: number;
+  memoryUsed?: number;
+  token?: string;
 };
 
 // Map of language names to Judge0 language IDs
@@ -30,12 +32,20 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
       throw new Error(`Unsupported language: ${language}`);
     }
     
-    // Create submission
-    const response = await fetch('http://82.25.104.175:2358/submissions', {
+    // Create submission - use a fetch with timeout for better error handling
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    
+    console.log('Submitting code to Judge0 API...');
+    
+    const response = await fetch('https://judge0-ce.p.rapidapi.com/submissions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'X-RapidAPI-Key': '252f44d493msh456a1564f92e1f7p13d1d3jsnd3baeb036aab',
+        'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com'
       },
+      signal: controller.signal,
       body: JSON.stringify({
         source_code: code,
         language_id: languageId,
@@ -44,11 +54,16 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
       }),
     });
     
+    clearTimeout(timeoutId);
+    
     if (!response.ok) {
-      throw new Error('Failed to submit code');
+      console.error('Failed to submit code', response.status, response.statusText);
+      throw new Error(`Failed to submit code: ${response.status} ${response.statusText}`);
     }
     
     const submissionData = await response.json();
+    console.log('Submission response:', submissionData);
+    
     const { token } = submissionData;
     
     if (!token) {
@@ -63,18 +78,22 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
     while (attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
       
-      const resultResponse = await fetch(`http://82.25.104.175:2358/submissions/${token}`, {
+      const resultResponse = await fetch(`https://judge0-ce.p.rapidapi.com/submissions/${token}?base64_encoded=false&fields=stdout,stderr,status_id,time,memory,compile_output`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
+          'X-RapidAPI-Key': '252f44d493msh456a1564f92e1f7p13d1d3jsnd3baeb036aab',
+          'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com'
         },
       });
       
       if (!resultResponse.ok) {
+        console.error('Failed to fetch submission result', resultResponse.status, resultResponse.statusText);
         throw new Error('Failed to fetch submission result');
       }
       
       result = await resultResponse.json();
+      console.log('Result response:', result);
       
       if (result.status && result.status.id !== 1 && result.status.id !== 2) {
         // Status 1 = In Queue, 2 = Processing
@@ -106,7 +125,9 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
       output: result.stdout || '',
       error: result.stderr || result.compile_output || '',
       status,
-      executionTime: result.time
+      executionTime: result.time,
+      memoryUsed: result.memory,
+      token
     };
   } catch (error) {
     console.error('Code execution error:', error);

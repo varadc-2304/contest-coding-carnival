@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { executeCode } from '@/services/codeExecutionService';
@@ -72,6 +71,8 @@ const CodeEditor = ({ question, onSubmit }: CodeEditorProps) => {
         expectedOutput: testcase.output
       });
       
+      console.log('Run result:', result);
+      
       setOutput(result.output || 'No output generated');
       
       if (result.status === 'Accepted') {
@@ -122,6 +123,7 @@ const CodeEditor = ({ question, onSubmit }: CodeEditorProps) => {
       let allTestsPassed = true;
       let executionTime = 0;
       let memoryUsed = 0;
+      let failedTestResult = '';
       
       for (const testcase of question.testcases) {
         const result = await executeCode({
@@ -131,14 +133,17 @@ const CodeEditor = ({ question, onSubmit }: CodeEditorProps) => {
           expectedOutput: testcase.expected_output
         });
         
+        console.log('Test case result:', result);
+        
         if (result.status !== 'Accepted') {
           allTestsPassed = false;
-          setOutput(`Failed test case: ${testcase.input}\nExpected: ${testcase.expected_output}\nGot: ${result.output}`);
+          failedTestResult = `Failed test case: ${testcase.input}\nExpected: ${testcase.expected_output}\nGot: ${result.output}`;
           break;
         }
         
-        executionTime = Math.max(executionTime, result.time || 0);
-        memoryUsed = Math.max(memoryUsed, result.memory || 0);
+        // Use optional chaining to safely access properties
+        executionTime = Math.max(executionTime, result.executionTime || 0);
+        memoryUsed = Math.max(memoryUsed, result.memoryUsed || 0);
       }
       
       const status = allTestsPassed ? 'Accepted' : 'Wrong Answer';
@@ -162,6 +167,7 @@ const CodeEditor = ({ question, onSubmit }: CodeEditorProps) => {
           description: "Your solution passed all test cases!",
         });
       } else {
+        setOutput(failedTestResult);
         toast({
           title: "Wrong Answer",
           description: "Your solution failed one or more test cases.",
