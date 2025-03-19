@@ -36,7 +36,8 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
     
-    console.log('Submitting code to custom Judge0 API...');
+    console.log('Submitting code to Judge0 API...');
+    console.log('Payload:', { language_id: languageId, source_code: code.substring(0, 50) + '...', stdin: input });
     
     const response = await fetch('http://82.25.104.175:2358/submissions', {
       method: 'POST',
@@ -55,18 +56,19 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
     clearTimeout(timeoutId);
     
     if (!response.ok) {
-      console.error('Failed to submit code', response.status, response.statusText);
+      const errorText = await response.text();
+      console.error('Failed to submit code', response.status, response.statusText, errorText);
       throw new Error(`Failed to submit code: ${response.status} ${response.statusText}`);
     }
     
     const submissionData = await response.json();
     console.log('Submission response:', submissionData);
     
-    const { token } = submissionData;
-    
-    if (!token) {
+    if (!submissionData.token) {
       throw new Error('No submission token received');
     }
+    
+    const { token } = submissionData;
     
     // Poll for results
     let result: any;
