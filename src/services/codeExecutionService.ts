@@ -76,7 +76,7 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
     while (attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
       
-      const resultResponse = await fetch(`http://82.25.104.175:2358/submissions/${token}?base64_encoded=false&fields=stdout,stderr,status_id,time,memory,compile_output`, {
+      const resultResponse = await fetch(`http://82.25.104.175:2358/submissions/${token}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
