@@ -36,14 +36,12 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
     
-    console.log('Submitting code to Judge0 API...');
+    console.log('Submitting code to custom Judge0 API...');
     
-    const response = await fetch('https://judge0-ce.p.rapidapi.com/submissions', {
+    const response = await fetch('http://82.25.104.175:2358/submissions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-RapidAPI-Key': '252f44d493msh456a1564f92e1f7p13d1d3jsnd3baeb036aab',
-        'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com'
       },
       signal: controller.signal,
       body: JSON.stringify({
@@ -78,12 +76,10 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
     while (attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
       
-      const resultResponse = await fetch(`https://judge0-ce.p.rapidapi.com/submissions/${token}?base64_encoded=false&fields=stdout,stderr,status_id,time,memory,compile_output`, {
+      const resultResponse = await fetch(`http://82.25.104.175:2358/submissions/${token}?base64_encoded=false&fields=stdout,stderr,status_id,time,memory,compile_output`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          'X-RapidAPI-Key': '252f44d493msh456a1564f92e1f7p13d1d3jsnd3baeb036aab',
-          'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com'
         },
       });
       
