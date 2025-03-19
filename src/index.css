@@ -5,7 +5,7 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
+    --background: 210 40% 98%;
     --foreground: 222.2 84% 4.9%;
 
     --card: 0 0% 100%;
@@ -114,29 +114,49 @@
 
 @layer components {
   .contest-button {
-    @apply bg-contest-red text-white rounded-lg px-6 py-3 font-medium transition-all duration-300
-           hover:bg-opacity-90 hover:shadow-md active:bg-opacity-100 active:scale-[0.98] active:shadow-sm
-           focus:outline-none focus:ring-2 focus:ring-contest-red focus:ring-opacity-50;
+    @apply bg-primary text-primary-foreground rounded-lg px-6 py-3 font-medium transition-all duration-300
+           hover:bg-primary/90 hover:shadow-md active:bg-primary/100 active:scale-[0.98] active:shadow-sm
+           focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50;
   }
   
   .contest-input {
-    @apply bg-white border border-contest-mediumGray rounded-lg px-4 py-3 w-full
-           transition-all duration-200 focus:border-contest-red focus:ring-1 focus:ring-contest-red
+    @apply bg-white border border-border rounded-lg px-4 py-3 w-full
+           transition-all duration-200 focus:border-primary focus:ring-1 focus:ring-primary
            focus:outline-none;
   }
   
   .contest-card {
-    @apply bg-white rounded-2xl shadow-sm border border-contest-lightGray p-6
+    @apply bg-card rounded-xl shadow-sm border border-border p-6
            transition-all duration-300 hover:shadow-md;
   }
   
   .glass-panel {
     @apply bg-white bg-opacity-80 backdrop-blur-lg border border-white border-opacity-20
-           rounded-2xl shadow-sm;
+           rounded-xl shadow-sm;
   }
   
   .code-editor-container {
-    @apply font-mono text-sm bg-white rounded-lg border border-contest-mediumGray shadow-inner
+    @apply font-mono text-sm bg-card rounded-lg border border-border shadow-inner
            transition-all duration-300;
+  }
+  
+  .code-block {
+    @apply font-mono text-sm bg-muted/20 rounded-md border border-border p-3 overflow-x-auto;
+  }
+  
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+  
+  .badge-primary {
+    @apply bg-primary/10 text-primary;
+  }
+  
+  .badge-secondary {
+    @apply bg-secondary text-secondary-foreground;
+  }
+  
+  .badge-outline {
+    @apply bg-transparent border border-current;
   }
 }

@@ -1,21 +1,4 @@
-
-type CodeExecutionParams = {
-  language: string;
-  code: string;
-  input: string;
-  expectedOutput: string;
-};
-
-type CodeExecutionResult = {
-  output?: string;
-  error?: string;
-  status: 'Accepted' | 'Wrong Answer' | 'Error' | 'Time Limit Exceeded';
-  executionTime?: number;
-  memoryUsed?: number;
-  token?: string;
-};
-
-// Map of language names to Judge0 language IDs
+// Language ID mapping for Judge0 API
 const languageIds: Record<string, number> = {
   cpp: 54,       // C++ (GCC 9.2.0)
   java: 62,      // Java (OpenJDK 13.0.1)
@@ -26,110 +9,60 @@ const languageIds: Record<string, number> = {
 export const executeCode = async (params: CodeExecutionParams): Promise<CodeExecutionResult> => {
   try {
     const { language, code, input, expectedOutput } = params;
-    
+
+    // Ensure language exists in languageIds
     const languageId = languageIds[language];
     if (!languageId) {
       throw new Error(`Unsupported language: ${language}`);
     }
+
+    console.log('Submitting code to Judge0 API...');
     
-    // Create submission - use a fetch with timeout for better error handling
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-    
-    console.log('Submitting code to custom Judge0 API...');
-    
-    const response = await fetch('http://82.25.104.175:2358/submissions', {
+    const response = await fetch('http://82.25.104.175:2358/submissions?base64_encoded=false&wait=false', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        source_code: code,
-        language_id: languageId,
-        stdin: input,
-        expected_output: expectedOutput
-      }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_code: code, language_id: languageId, stdin: input, expected_output: expectedOutput }),
     });
-    
-    clearTimeout(timeoutId);
-    
+
     if (!response.ok) {
-      console.error('Failed to submit code', response.status, response.statusText);
-      throw new Error(`Failed to submit code: ${response.status} ${response.statusText}`);
+      throw new Error(`Submission failed: ${response.status} ${response.statusText}`);
     }
-    
-    const submissionData = await response.json();
-    console.log('Submission response:', submissionData);
-    
-    const { token } = submissionData;
-    
-    if (!token) {
-      throw new Error('No submission token received');
-    }
-    
-    // Poll for results
+
+    const { token } = await response.json();
+    if (!token) throw new Error('No token received from Judge0');
+
+    // Polling for execution result
     let result: any;
-    let attempts = 0;
-    const maxAttempts = 10;
-    
-    while (attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
-      
-      const resultResponse = await fetch(`http://82.25.104.175:2358/submissions/${token}?base64_encoded=false&fields=stdout,stderr,status_id,time,memory,compile_output`, {
+    for (let i = 0; i < 10; i++) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      const resultResponse = await fetch(`http://82.25.104.175:2358/submissions/${token}`, {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
       });
-      
+
       if (!resultResponse.ok) {
-        console.error('Failed to fetch submission result', resultResponse.status, resultResponse.statusText);
-        throw new Error('Failed to fetch submission result');
+        throw new Error('Error fetching execution result');
       }
-      
+
       result = await resultResponse.json();
-      console.log('Result response:', result);
-      
-      if (result.status && result.status.id !== 1 && result.status.id !== 2) {
-        // Status 1 = In Queue, 2 = Processing
-        break;
-      }
-      
-      attempts++;
+      if (result.status?.id > 2) break; // 1 = Queue, 2 = Processing, >2 means done
     }
-    
-    if (!result || attempts >= maxAttempts) {
-      throw new Error('Timeout while waiting for code execution');
-    }
-    
-    // Process the result
-    let status: CodeExecutionResult['status'] = 'Error';
-    
-    if (result.status.id === 3) {
-      // Accepted
-      status = 'Accepted';
-    } else if (result.status.id === 4) {
-      // Wrong Answer
-      status = 'Wrong Answer';
-    } else if (result.status.id === 5) {
-      // Time Limit Exceeded
-      status = 'Time Limit Exceeded';
-    }
-    
+
+    if (!result) throw new Error('Execution timeout');
+
     return {
       output: result.stdout || '',
       error: result.stderr || result.compile_output || '',
-      status,
+      status: result.status.id === 3 ? 'Accepted' :
+              result.status.id === 4 ? 'Wrong Answer' :
+              result.status.id === 5 ? 'Time Limit Exceeded' : 'Error',
       executionTime: result.time,
       memoryUsed: result.memory,
       token
     };
   } catch (error) {
-    console.error('Code execution error:', error);
-    return {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      status: 'Error'
-    };
+    console.error('Execution error:', error);
+    return { error: error instanceof Error ? error.message : 'Unknown error', status: 'Error' };
   }
 };
