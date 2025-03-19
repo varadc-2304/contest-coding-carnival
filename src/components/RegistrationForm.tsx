@@ -1,8 +1,8 @@
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from "@/hooks/use-toast";
-import { fetchContestDetails } from '@/services/contestService';
+import { fetchContestDetails, saveUserInfo } from '@/services/contestService';
 
 type UserFormData = {
   fullName: string;
@@ -56,17 +56,23 @@ const RegistrationForm = () => {
 
     setIsLoading(true);
     try {
+      // First save user info and get the user ID
+      const userId = await saveUserInfo(formData);
+      
+      // Fetch contest details
       const contestDetails = await fetchContestDetails(formData.contestCode);
       
-      // Store user info and contest details in sessionStorage
+      // Store user info, user ID and contest details in sessionStorage
       sessionStorage.setItem('userInfo', JSON.stringify(formData));
+      sessionStorage.setItem('userId', userId);
       sessionStorage.setItem('contestDetails', JSON.stringify(contestDetails));
       
       navigate('/contest-details');
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Registration error:', error);
       toast({
         title: "Error",
-        description: "Failed to fetch contest details. Please check your contest code.",
+        description: error.message || "Failed to fetch contest details. Please check your contest code.",
         variant: "destructive",
       });
     } finally {

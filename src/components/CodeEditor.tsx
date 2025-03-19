@@ -20,13 +20,15 @@ type CodeEditorProps = {
     }[];
     defaultCode: Record<string, string>;
   };
+  onSubmit?: (questionId: string, code: string, language: string, status: string, executionTime?: number, memoryUsed?: number) => void;
 };
 
-const CodeEditor = ({ question }: CodeEditorProps) => {
+const CodeEditor = ({ question, onSubmit }: CodeEditorProps) => {
   const [language, setLanguage] = useState<string>('cpp');
   const [code, setCode] = useState<string>('');
   const [output, setOutput] = useState<string>('');
   const [isRunning, setIsRunning] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
@@ -101,6 +103,82 @@ const CodeEditor = ({ question }: CodeEditorProps) => {
       setIsRunning(false);
     }
   };
+  
+  const handleSubmitCode = async () => {
+    if (!code.trim()) {
+      toast({
+        title: "Empty Code",
+        description: "Please write some code before submitting.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    setOutput('Submitting your code...');
+
+    try {
+      // Run tests on all test cases
+      let allTestsPassed = true;
+      let executionTime = 0;
+      let memoryUsed = 0;
+      
+      for (const testcase of question.testcases) {
+        const result = await executeCode({
+          language,
+          code,
+          input: testcase.input,
+          expectedOutput: testcase.expected_output
+        });
+        
+        if (result.status !== 'Accepted') {
+          allTestsPassed = false;
+          setOutput(`Failed test case: ${testcase.input}\nExpected: ${testcase.expected_output}\nGot: ${result.output}`);
+          break;
+        }
+        
+        executionTime = Math.max(executionTime, result.time || 0);
+        memoryUsed = Math.max(memoryUsed, result.memory || 0);
+      }
+      
+      const status = allTestsPassed ? 'Accepted' : 'Wrong Answer';
+      
+      // Call onSubmit callback to save submission
+      if (onSubmit) {
+        onSubmit(
+          question.id,
+          code,
+          language,
+          status,
+          executionTime,
+          memoryUsed
+        );
+      }
+      
+      if (allTestsPassed) {
+        setOutput('All test cases passed! Your solution has been submitted.');
+        toast({
+          title: "Success",
+          description: "Your solution passed all test cases!",
+        });
+      } else {
+        toast({
+          title: "Wrong Answer",
+          description: "Your solution failed one or more test cases.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      setOutput('Error executing code. Please try again.');
+      toast({
+        title: "Execution Error",
+        description: "Failed to submit your code. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const toggleFullscreen = () => {
     setIsFullscreen(!isFullscreen);
@@ -128,6 +206,24 @@ const CodeEditor = ({ question }: CodeEditorProps) => {
             className="text-sm px-3 py-1 rounded border border-contest-mediumGray hover:bg-contest-lightGray transition-colors"
           >
             {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+          </button>
+          
+          <button 
+            onClick={handleSubmitCode}
+            disabled={isSubmitting}
+            className="text-sm px-3 py-1 rounded bg-green-600 text-white hover:bg-green-700 transition-colors"
+          >
+            {isSubmitting ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Submitting
+              </>
+            ) : (
+              'Submit'
+            )}
           </button>
           
           <button

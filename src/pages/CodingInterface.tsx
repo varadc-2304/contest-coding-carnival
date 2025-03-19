@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from "@/hooks/use-toast";
 import CodeEditor from '@/components/CodeEditor';
+import { fetchContestQuestions, saveSubmission } from '@/services/contestService';
 
 type Question = {
   id: string;
@@ -23,95 +24,79 @@ type Question = {
 
 const CodingInterface = () => {
   const [timeLeft, setTimeLeft] = useState<number>(0);
-  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
-    // Check if contest is started
-    const contestEndTime = sessionStorage.getItem('contestEndTime');
-    if (!contestEndTime) {
-      toast({
-        title: "Contest not started",
-        description: "Please start the contest properly",
-        variant: "destructive",
-      });
-      navigate('/contest-details');
-      return;
-    }
-    
-    // Retrieve contest details and questions
-    const contestDetails = JSON.parse(sessionStorage.getItem('contestDetails') || '{}');
-    if (!contestDetails || !contestDetails.questions || contestDetails.questions.length === 0) {
-      // In a real app, you would fetch questions from the API
-      // For demo, we'll create a mock question
-      const mockQuestion: Question = {
-        id: "q1",
-        title: "Two Sum",
-        description: "Given an array of integers `nums` and an integer `target`, return indices of the two numbers such that they add up to `target`.\n\nYou may assume that each input would have exactly one solution, and you may not use the same element twice.",
-        examples: [
-          {
-            input: "nums = [2,7,11,15], target = 9",
-            output: "[0,1]",
-            explanation: "Because nums[0] + nums[1] == 9, we return [0, 1]."
-          },
-          {
-            input: "nums = [3,2,4], target = 6",
-            output: "[1,2]"
-          }
-        ],
-        constraints: [
-          "2 <= nums.length <= 10^4",
-          "-10^9 <= nums[i] <= 10^9",
-          "-10^9 <= target <= 10^9",
-          "Only one valid answer exists."
-        ],
-        testcases: [
-          {
-            input: "[2,7,11,15]\n9",
-            expected_output: "[0,1]"
-          }
-        ],
-        defaultCode: {
-          cpp: `#include <vector>\n\nclass Solution {\npublic:\n    std::vector<int> twoSum(std::vector<int>& nums, int target) {\n        // Your code here\n        \n    }\n};`,
-          java: `class Solution {\n    public int[] twoSum(int[] nums, int target) {\n        // Your code here\n        \n    }\n}`,
-          python: `class Solution:\n    def twoSum(self, nums, target):\n        # Your code here\n        pass`,
-          javascript: `/**\n * @param {number[]} nums\n * @param {number} target\n * @return {number[]}\n */\nvar twoSum = function(nums, target) {\n    // Your code here\n    \n};`
+    const loadContestData = async () => {
+      try {
+        // Check if contest is started
+        const contestEndTime = sessionStorage.getItem('contestEndTime');
+        if (!contestEndTime) {
+          toast({
+            title: "Contest not started",
+            description: "Please start the contest properly",
+            variant: "destructive",
+          });
+          navigate('/contest-details');
+          return;
         }
-      };
-      
-      setCurrentQuestion(mockQuestion);
-    } else {
-      setCurrentQuestion(contestDetails.questions[0]);
-    }
-    
-    // Start the timer
-    const endTimeMs = parseInt(contestEndTime);
-    const updateTimer = () => {
-      const now = new Date().getTime();
-      const diff = Math.max(0, endTimeMs - now);
-      const secondsLeft = Math.floor(diff / 1000);
-      
-      setTimeLeft(secondsLeft);
-      
-      if (secondsLeft <= 0) {
-        // Contest ended
-        clearInterval(timerInterval);
+        
+        // Retrieve contest details
+        const contestDetails = JSON.parse(sessionStorage.getItem('contestDetails') || '{}');
+        if (!contestDetails || !contestDetails.id) {
+          throw new Error('Contest details not found');
+        }
+        
+        // Fetch questions for this contest
+        const fetchedQuestions = await fetchContestQuestions(contestDetails.id);
+        if (fetchedQuestions && fetchedQuestions.length > 0) {
+          setQuestions(fetchedQuestions);
+        } else {
+          throw new Error('No questions found for this contest');
+        }
+        
+        // Start the timer
+        const endTimeMs = parseInt(contestEndTime);
+        const updateTimer = () => {
+          const now = new Date().getTime();
+          const diff = Math.max(0, endTimeMs - now);
+          const secondsLeft = Math.floor(diff / 1000);
+          
+          setTimeLeft(secondsLeft);
+          
+          if (secondsLeft <= 0) {
+            // Contest ended
+            clearInterval(timerInterval);
+            toast({
+              title: "Time's up!",
+              description: "The contest has ended",
+              variant: "destructive",
+            });
+            navigate('/');
+          }
+        };
+        
+        updateTimer();
+        const timerInterval = setInterval(updateTimer, 1000);
+        setIsLoading(false);
+        
+        return () => clearInterval(timerInterval);
+      } catch (error: any) {
+        console.error('Error loading contest data:', error);
         toast({
-          title: "Time's up!",
-          description: "The contest has ended",
+          title: "Error",
+          description: error.message || "Failed to load contest data",
           variant: "destructive",
         });
         navigate('/');
       }
     };
     
-    updateTimer();
-    const timerInterval = setInterval(updateTimer, 1000);
-    setIsLoading(false);
-    
-    return () => clearInterval(timerInterval);
+    loadContestData();
   }, [navigate, toast]);
 
   const formatTime = (seconds: number) => {
@@ -122,6 +107,46 @@ const CodingInterface = () => {
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const handleSaveSubmission = async (questionId: string, code: string, language: string, status: string, executionTime?: number, memoryUsed?: number) => {
+    try {
+      const userId = sessionStorage.getItem('userId');
+      const contestDetails = JSON.parse(sessionStorage.getItem('contestDetails') || '{}');
+      
+      if (!userId || !contestDetails.id) {
+        throw new Error('User or contest information missing');
+      }
+      
+      await saveSubmission({
+        userId,
+        contestId: contestDetails.id,
+        questionId,
+        code,
+        language,
+        status,
+        executionTime,
+        memoryUsed
+      });
+      
+      toast({
+        title: "Submission saved",
+        description: "Your code has been submitted successfully",
+      });
+    } catch (error: any) {
+      console.error('Error saving submission:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save your submission",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleQuestionChange = (index: number) => {
+    if (index >= 0 && index < questions.length) {
+      setCurrentQuestionIndex(index);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
@@ -129,6 +154,8 @@ const CodingInterface = () => {
       </div>
     );
   }
+
+  const currentQuestion = questions.length > 0 ? questions[currentQuestionIndex] : null;
 
   return (
     <div className="min-h-screen flex flex-col bg-white">
@@ -138,8 +165,28 @@ const CodingInterface = () => {
           <span className="ml-2 font-bold text-lg">CodeArena</span>
         </div>
         
-        <div className="text-contest-red font-mono font-bold text-xl">
-          {formatTime(timeLeft)}
+        <div className="flex items-center space-x-4">
+          {questions.length > 0 && (
+            <div className="flex space-x-2">
+              {questions.map((_, index) => (
+                <button
+                  key={index}
+                  onClick={() => handleQuestionChange(index)}
+                  className={`px-3 py-1 rounded ${
+                    index === currentQuestionIndex 
+                      ? 'bg-contest-red text-white' 
+                      : 'bg-gray-100 hover:bg-gray-200'
+                  }`}
+                >
+                  {index + 1}
+                </button>
+              ))}
+            </div>
+          )}
+          
+          <div className="text-contest-red font-mono font-bold text-xl">
+            {formatTime(timeLeft)}
+          </div>
         </div>
       </header>
       
@@ -190,7 +237,12 @@ const CodingInterface = () => {
         
         {/* Code Editor Panel */}
         <div className="p-4 overflow-hidden">
-          {currentQuestion && <CodeEditor question={currentQuestion} />}
+          {currentQuestion && (
+            <CodeEditor 
+              question={currentQuestion} 
+              onSubmit={handleSaveSubmission}
+            />
+          )}
         </div>
       </div>
     </div>

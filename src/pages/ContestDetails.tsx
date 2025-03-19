@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from "@/hooks/use-toast";
+import { startParticipation } from '@/services/contestService';
 
 type ContestDetails = {
   id: string;
@@ -46,15 +47,35 @@ const ContestDetails = () => {
     setIsLoading(false);
   }, [navigate, toast]);
 
-  const handleStartContest = () => {
-    // Save the contest start time
-    const startTime = new Date().getTime();
-    const endTime = startTime + (contestDetails?.duration || 0) * 60 * 1000;
+  const handleStartContest = async () => {
+    if (!contestDetails) return;
     
-    sessionStorage.setItem('contestStartTime', startTime.toString());
-    sessionStorage.setItem('contestEndTime', endTime.toString());
-    
-    navigate('/coding-interface');
+    try {
+      const userId = sessionStorage.getItem('userId');
+      if (!userId) {
+        throw new Error('User ID not found. Please register again.');
+      }
+      
+      // Record participation start in the database
+      const participationId = await startParticipation(userId, contestDetails.id);
+      sessionStorage.setItem('participationId', participationId);
+      
+      // Save the contest start time
+      const startTime = new Date().getTime();
+      const endTime = startTime + (contestDetails?.duration || 0) * 60 * 1000;
+      
+      sessionStorage.setItem('contestStartTime', startTime.toString());
+      sessionStorage.setItem('contestEndTime', endTime.toString());
+      
+      navigate('/coding-interface');
+    } catch (error: any) {
+      console.error('Failed to start contest:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to start the contest. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const formatTime = (seconds: number) => {
