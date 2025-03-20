@@ -66,40 +66,50 @@ const CodeEditor = ({ question, onSubmit }: CodeEditorProps) => {
     setOutput('Running code...');
 
     try {
+      console.log("Starting execution with code:", code.substring(0, 100) + "...");
+      
       // Use the first example test case for quick testing
       const testcase = question.examples[0];
+      
+      // Clean up the input to ensure it's properly formatted
+      const cleanInput = testcase.input.trim();
       
       const result = await executeCode({
         language,
         code,
-        input: testcase.input,
-        expectedOutput: testcase.output
+        input: cleanInput,
+        expectedOutput: testcase.output.trim()
       });
       
       console.log('Run result:', result);
       
-      setOutput(result.output || 'No output generated');
-      
-      if (result.status === 'Accepted') {
-        toast({
-          title: "Success",
-          description: "Your code passed the example test case!",
-        });
-      } else if (result.status === 'Wrong Answer') {
-        toast({
-          title: "Wrong Answer",
-          description: "Your code did not produce the expected output.",
-          variant: "destructive",
-        });
-      } else if (result.error) {
+      if (result.error) {
+        setOutput(`Error: ${result.error}\n\nOutput: ${result.output || ''}`);
         toast({
           title: "Error",
-          description: result.error,
+          description: result.error.substring(0, 200),
           variant: "destructive",
         });
+      } else {
+        setOutput(result.output || 'No output generated');
+        
+        if (result.status === 'Accepted') {
+          toast({
+            title: "Success",
+            description: "Your code passed the example test case!",
+          });
+        } else if (result.status === 'Wrong Answer') {
+          toast({
+            title: "Wrong Answer",
+            description: "Your code did not produce the expected output.",
+            variant: "destructive",
+          });
+        }
       }
     } catch (error) {
-      setOutput('Error executing code. Please try again.');
+      console.error("Run code error:", error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setOutput(`Error executing code: ${errorMessage}`);
       toast({
         title: "Execution Error",
         description: "Failed to run your code. Please try again.",
@@ -132,11 +142,13 @@ const CodeEditor = ({ question, onSubmit }: CodeEditorProps) => {
       let lastToken = '';
       
       for (const testcase of question.testcases) {
+        console.log("Running test case with input:", testcase.input);
+        
         const result = await executeCode({
           language,
           code,
-          input: testcase.input,
-          expectedOutput: testcase.expected_output
+          input: testcase.input.trim(),
+          expectedOutput: testcase.expected_output.trim()
         });
         
         console.log('Test case result:', result);
@@ -147,7 +159,7 @@ const CodeEditor = ({ question, onSubmit }: CodeEditorProps) => {
         
         if (result.status !== 'Accepted') {
           allTestsPassed = false;
-          failedTestResult = `Failed test case: ${testcase.input}\nExpected: ${testcase.expected_output}\nGot: ${result.output}`;
+          failedTestResult = `Failed test case with input: ${testcase.input}\nExpected: ${testcase.expected_output}\nGot: ${result.output || '(no output)'}\nError: ${result.error || '(no error)'}`;
           break;
         }
         
@@ -185,7 +197,9 @@ const CodeEditor = ({ question, onSubmit }: CodeEditorProps) => {
         });
       }
     } catch (error) {
-      setOutput('Error executing code. Please try again.');
+      console.error("Submit code error:", error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setOutput(`Error executing code: ${errorMessage}`);
       toast({
         title: "Execution Error",
         description: "Failed to submit your code. Please try again.",

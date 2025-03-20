@@ -38,20 +38,27 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
     console.log(`Code length: ${code.length} characters`);
     console.log(`Input: ${input}`);
 
-    // Create the request body - without base64 encoding
+    // Make sure code isn't empty
+    if (!code || code.trim() === '') {
+      throw new Error('Code cannot be empty');
+    }
+
+    // Create the request body - explicitly setting the fields without encoding
     const requestBody = {
       source_code: code,
       language_id: languageId,
       stdin: input
     };
 
-    console.log('Submitting code to Judge0 API...');
+    console.log('Request body:', JSON.stringify(requestBody, null, 2));
 
-    // First request: Submit the code - explicitly set base64_encoded to false
+    // First request: Submit the code - explicitly set base64_encoded=false
+    console.log('Submitting code to Judge0 API...');
     const submissionResponse = await fetch('http://82.25.104.175:2358/submissions?base64_encoded=false&wait=false', {
       method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json'
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
       },
       body: JSON.stringify(requestBody),
     });
@@ -65,12 +72,15 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
     }
 
     // Parse the submission response
+    const responseText = await submissionResponse.text();
+    console.log('Raw submission response:', responseText);
+    
     let submissionData;
     try {
-      submissionData = await submissionResponse.json();
-      console.log('Submission response data:', JSON.stringify(submissionData, null, 2));
+      submissionData = JSON.parse(responseText);
+      console.log('Parsed submission data:', submissionData);
     } catch (error) {
-      console.error('Failed to parse submission response:', error);
+      console.error('Failed to parse submission response:', error, 'Raw response:', responseText);
       throw new Error('Invalid response from Judge0 API');
     }
 
@@ -78,7 +88,7 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
     const token = submissionData.token;
     if (!token) {
       console.error('No token in response:', submissionData);
-      throw new Error('No token received from Judge0');
+      throw new Error('No token received from Judge0 API');
     }
 
     console.log(`Code submitted successfully. Token: ${token}`);
@@ -86,7 +96,7 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
     // Polling for execution result
     let result: any = null;
     let attempt = 0;
-    const maxAttempts = 30;
+    const maxAttempts = 60; // Increase timeout for slow servers
     const pollingInterval = 1000; // 1 second
 
     while (attempt < maxAttempts) {
@@ -96,10 +106,13 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
       await new Promise(resolve => setTimeout(resolve, pollingInterval));
 
       // Second request: Get the execution result - base64_encoded=false to get plain text
-      const resultResponse = await fetch(`http://82.25.104.175:2358/submissions/${token}?base64_encoded=false`, {
+      const resultUrl = `http://82.25.104.175:2358/submissions/${token}?base64_encoded=false`;
+      console.log(`Fetching result from: ${resultUrl}`);
+      
+      const resultResponse = await fetch(resultUrl, {
         method: 'GET',
-        headers: { 
-          'Accept': 'application/json' 
+        headers: {
+          'Accept': 'application/json'
         },
       });
 
@@ -115,20 +128,14 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
         continue;
       }
 
+      // Get the raw response text to debug
       let responseText = await resultResponse.text();
-      console.log('Raw response:', responseText.substring(0, 200) + (responseText.length > 200 ? '...' : ''));
+      console.log('Raw result response:', responseText);
 
       // Parse the result response
       try {
         result = JSON.parse(responseText);
-        console.log('Result response data:', JSON.stringify({
-          status: result.status,
-          time: result.time,
-          memory: result.memory,
-          stdout_length: result.stdout ? result.stdout.length : 0,
-          stderr_length: result.stderr ? result.stderr.length : 0,
-          compile_output_length: result.compile_output ? result.compile_output.length : 0
-        }, null, 2));
+        console.log('Parsed result data:', JSON.stringify(result, null, 2));
       } catch (error) {
         console.error('Failed to parse result response:', error);
         console.error('Response that failed to parse:', responseText);
@@ -140,6 +147,8 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
       }
 
       // Check if execution is completed
+      // Status ID reference:
+      // 1 - In Queue, 2 - Processing, 3 - Accepted, 4 - Wrong Answer, 5 - Time Limit Exceeded, 6 - Compilation Error, etc.
       if (result?.status?.id > 2) {
         console.log(`Execution completed with status: ${result.status.id} (${result.status.description})`);
         break;
@@ -152,21 +161,46 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
       throw new Error('Execution timeout or invalid response');
     }
 
-    // Log all the received data for debugging
-    console.log('Final result data:', {
+    // Output detailed execution information
+    console.log('Final execution result:', {
       status: result.status,
-      stdout: result.stdout,
-      stderr: result.stderr,
-      compile_output: result.compile_output,
+      stdout: result.stdout || '(no stdout)',
+      stderr: result.stderr || '(no stderr)',
+      compile_output: result.compile_output || '(no compile output)',
       time: result.time,
       memory: result.memory
     });
 
-    // Construct and return the result
+    // Determine the appropriate output and error from the result
+    const output = result.stdout || '';
+    const error = result.stderr || result.compile_output || '';
+    
+    // Handle common status codes for better UX
+    let status = mapStatus(result.status.id);
+    
+    if (result.status.id === 3) { // Accepted status
+      if (params.expectedOutput !== undefined) {
+        // Compare with expected output for challenges
+        const normalizedOutput = output.trim();
+        const normalizedExpected = params.expectedOutput.trim();
+        
+        if (normalizedOutput === normalizedExpected) {
+          status = 'Accepted';
+        } else {
+          status = 'Wrong Answer';
+          console.log(`Expected: "${normalizedExpected}", Got: "${normalizedOutput}"`);
+        }
+      }
+    } else if (error) {
+      // Enhance error messages
+      console.error(`Execution error: ${error}`);
+    }
+
+    // Return the complete result
     return {
-      output: result.stdout || '',
-      error: result.stderr || result.compile_output || '',
-      status: mapStatus(result.status.id),
+      output,
+      error,
+      status,
       executionTime: result.time || 0,
       memoryUsed: result.memory || 0,
       token
@@ -181,7 +215,7 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
   }
 };
 
-// Helper function to map status codes
+// Helper function to map status codes to human-readable status
 const mapStatus = (statusId: number): string => {
   const statusMap: Record<number, string> = {
     1: 'In Queue',
