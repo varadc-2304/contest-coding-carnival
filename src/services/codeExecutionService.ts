@@ -54,7 +54,7 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
 
     // First request: Submit the code - explicitly set base64_encoded=false
     console.log('Submitting code to Judge0 API...');
-    const submissionResponse = await fetch('http://82.25.104.175:2358/submissions?base64_encoded=false&wait=false', {
+    const submissionResponse = await fetch('https://judge0.arenahq-mitwpu.in/submissions?base64_encoded=false&wait=false', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -106,7 +106,7 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
       await new Promise(resolve => setTimeout(resolve, pollingInterval));
 
       // Second request: Get the execution result - base64_encoded=false to get plain text
-      const resultUrl = `http://82.25.104.175:2358/submissions/${token}?base64_encoded=false`;
+      const resultUrl = `https://judge0.arenahq-mitwpu.in/submissions/${token}?base64_encoded=false`;
       console.log(`Fetching result from: ${resultUrl}`);
       
       const resultResponse = await fetch(resultUrl, {
