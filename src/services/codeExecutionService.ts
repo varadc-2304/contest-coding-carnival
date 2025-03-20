@@ -40,19 +40,21 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
 
     // Create the request body
     const requestBody = {
-      source_code: code,
+      source_code: btoa(code),  // Base64 encode the code
       language_id: languageId,
-      stdin: input
+      stdin: btoa(input)        // Base64 encode the input
     };
 
-    console.log('Submitting code to Judge0 API:', JSON.stringify(requestBody, null, 2));
+    console.log('Submitting code to Judge0 API:', JSON.stringify({
+      ...requestBody,
+      source_code: `[BASE64 ENCODED: ${code.length} chars]`
+    }, null, 2));
 
     // First request: Submit the code
-    const submissionResponse = await fetch('http://82.25.104.175:2358/submissions?base64_encoded=false&wait=false', {
+    const submissionResponse = await fetch('http://82.25.104.175:2358/submissions?base64_encoded=true&wait=false', {
       method: 'POST',
       headers: { 
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify(requestBody),
     });
@@ -88,7 +90,7 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
     // Polling for execution result
     let result: any;
     let attempt = 0;
-    const maxAttempts = 15;
+    const maxAttempts = 20;
     const pollingInterval = 1000; // 1 second
 
     while (attempt < maxAttempts) {
@@ -98,7 +100,7 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
       await new Promise(resolve => setTimeout(resolve, pollingInterval));
 
       // Second request: Get the execution result
-      const resultResponse = await fetch(`http://82.25.104.175:2358/submissions/${token}?base64_encoded=false`, {
+      const resultResponse = await fetch(`http://82.25.104.175:2358/submissions/${token}?base64_encoded=true`, {
         method: 'GET',
         headers: { 
           'Accept': 'application/json' 
@@ -121,7 +123,11 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
       // Parse the result response
       try {
         result = await resultResponse.json();
-        console.log('Result response data:', JSON.stringify(result, null, 2));
+        console.log('Result response data:', JSON.stringify({
+          ...result,
+          stdout: result.stdout ? '[BASE64 ENCODED]' : null,
+          stderr: result.stderr ? '[BASE64 ENCODED]' : null
+        }, null, 2));
       } catch (error) {
         console.error('Failed to parse result response:', error);
         
@@ -145,10 +151,33 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
       throw new Error('Execution timeout or invalid response');
     }
 
+    // Decode the base64 encoded outputs
+    let stdout = '';
+    let stderr = '';
+    let compileOutput = '';
+
+    try {
+      if (result.stdout) {
+        stdout = atob(result.stdout);
+      }
+      if (result.stderr) {
+        stderr = atob(result.stderr);
+      }
+      if (result.compile_output) {
+        compileOutput = atob(result.compile_output);
+      }
+    } catch (error) {
+      console.error('Error decoding base64 output:', error);
+    }
+
+    console.log('Decoded stdout:', stdout);
+    console.log('Decoded stderr:', stderr);
+    console.log('Decoded compile_output:', compileOutput);
+
     // Construct and return the result
     return {
-      output: result.stdout || '',
-      error: result.stderr || result.compile_output || '',
+      output: stdout || '',
+      error: stderr || compileOutput || '',
       status: mapStatus(result.status.id),
       executionTime: result.time || 0,
       memoryUsed: result.memory || 0,
