@@ -38,20 +38,17 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
     console.log(`Code length: ${code.length} characters`);
     console.log(`Input: ${input}`);
 
-    // Create the request body
+    // Create the request body - without base64 encoding
     const requestBody = {
-      source_code: btoa(code),  // Base64 encode the code
+      source_code: code,
       language_id: languageId,
-      stdin: btoa(input)        // Base64 encode the input
+      stdin: input
     };
 
-    console.log('Submitting code to Judge0 API:', JSON.stringify({
-      ...requestBody,
-      source_code: `[BASE64 ENCODED: ${code.length} chars]`
-    }, null, 2));
+    console.log('Submitting code to Judge0 API...');
 
-    // First request: Submit the code
-    const submissionResponse = await fetch('http://82.25.104.175:2358/submissions?base64_encoded=true&wait=false', {
+    // First request: Submit the code - explicitly set base64_encoded to false
+    const submissionResponse = await fetch('http://82.25.104.175:2358/submissions?base64_encoded=false&wait=false', {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json'
@@ -61,7 +58,6 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
 
     console.log('Submission response status:', submissionResponse.status);
     
-    // Check for HTTP errors
     if (!submissionResponse.ok) {
       const errorText = await submissionResponse.text();
       console.error('Submission failed:', submissionResponse.status, errorText);
@@ -88,9 +84,9 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
     console.log(`Code submitted successfully. Token: ${token}`);
 
     // Polling for execution result
-    let result: any;
+    let result: any = null;
     let attempt = 0;
-    const maxAttempts = 20;
+    const maxAttempts = 30;
     const pollingInterval = 1000; // 1 second
 
     while (attempt < maxAttempts) {
@@ -99,8 +95,8 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
       
       await new Promise(resolve => setTimeout(resolve, pollingInterval));
 
-      // Second request: Get the execution result
-      const resultResponse = await fetch(`http://82.25.104.175:2358/submissions/${token}?base64_encoded=true`, {
+      // Second request: Get the execution result - base64_encoded=false to get plain text
+      const resultResponse = await fetch(`http://82.25.104.175:2358/submissions/${token}?base64_encoded=false`, {
         method: 'GET',
         headers: { 
           'Accept': 'application/json' 
@@ -113,25 +109,30 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
         const errorText = await resultResponse.text();
         console.error(`Error fetching execution result: ${resultResponse.status} ${errorText}`);
         
-        // Don't throw immediately, try again unless we've hit the max attempts
         if (attempt >= maxAttempts) {
           throw new Error(`Error fetching execution result: ${resultResponse.status} ${errorText}`);
         }
         continue;
       }
 
+      let responseText = await resultResponse.text();
+      console.log('Raw response:', responseText.substring(0, 200) + (responseText.length > 200 ? '...' : ''));
+
       // Parse the result response
       try {
-        result = await resultResponse.json();
+        result = JSON.parse(responseText);
         console.log('Result response data:', JSON.stringify({
-          ...result,
-          stdout: result.stdout ? '[BASE64 ENCODED]' : null,
-          stderr: result.stderr ? '[BASE64 ENCODED]' : null
+          status: result.status,
+          time: result.time,
+          memory: result.memory,
+          stdout_length: result.stdout ? result.stdout.length : 0,
+          stderr_length: result.stderr ? result.stderr.length : 0,
+          compile_output_length: result.compile_output ? result.compile_output.length : 0
         }, null, 2));
       } catch (error) {
         console.error('Failed to parse result response:', error);
+        console.error('Response that failed to parse:', responseText);
         
-        // Don't throw immediately, try again unless we've hit the max attempts
         if (attempt >= maxAttempts) {
           throw new Error('Invalid response from Judge0 API when fetching result');
         }
@@ -151,33 +152,20 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
       throw new Error('Execution timeout or invalid response');
     }
 
-    // Decode the base64 encoded outputs
-    let stdout = '';
-    let stderr = '';
-    let compileOutput = '';
-
-    try {
-      if (result.stdout) {
-        stdout = atob(result.stdout);
-      }
-      if (result.stderr) {
-        stderr = atob(result.stderr);
-      }
-      if (result.compile_output) {
-        compileOutput = atob(result.compile_output);
-      }
-    } catch (error) {
-      console.error('Error decoding base64 output:', error);
-    }
-
-    console.log('Decoded stdout:', stdout);
-    console.log('Decoded stderr:', stderr);
-    console.log('Decoded compile_output:', compileOutput);
+    // Log all the received data for debugging
+    console.log('Final result data:', {
+      status: result.status,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      compile_output: result.compile_output,
+      time: result.time,
+      memory: result.memory
+    });
 
     // Construct and return the result
     return {
-      output: stdout || '',
-      error: stderr || compileOutput || '',
+      output: result.stdout || '',
+      error: result.stderr || result.compile_output || '',
       status: mapStatus(result.status.id),
       executionTime: result.time || 0,
       memoryUsed: result.memory || 0,
@@ -195,16 +183,22 @@ export const executeCode = async (params: CodeExecutionParams): Promise<CodeExec
 
 // Helper function to map status codes
 const mapStatus = (statusId: number): string => {
-  switch (statusId) {
-    case 3: return 'Accepted';
-    case 4: return 'Wrong Answer';
-    case 5: return 'Time Limit Exceeded';
-    case 6: return 'Compilation Error';
-    case 7: return 'Runtime Error';
-    case 8: return 'Memory Limit Exceeded';
-    case 9: return 'Runtime Error';
-    case 10: return 'Internal Error';
-    case 11: return 'Exec Format Error';
-    default: return `Unknown (${statusId})`;
-  }
+  const statusMap: Record<number, string> = {
+    1: 'In Queue',
+    2: 'Processing',
+    3: 'Accepted',
+    4: 'Wrong Answer',
+    5: 'Time Limit Exceeded',
+    6: 'Compilation Error',
+    7: 'Runtime Error (SIGSEGV)',
+    8: 'Runtime Error (SIGXFSZ)',
+    9: 'Runtime Error (SIGFPE)',
+    10: 'Runtime Error (SIGABRT)',
+    11: 'Runtime Error (NZEC)',
+    12: 'Runtime Error (Other)',
+    13: 'Internal Error',
+    14: 'Exec Format Error'
+  };
+  
+  return statusMap[statusId] || `Unknown Status (${statusId})`;
 };
